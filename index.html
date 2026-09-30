@@ -64,7 +64,7 @@
       letter-spacing: 0.5px;
     }
 
-    select, input[type="number"] {
+    select, input[type="number"], input[type="range"] {
       padding: 8px 10px;
       border: 1px solid #cbd5e1;
       border-radius: 6px;
@@ -72,6 +72,20 @@
       background-color: #f8fafc;
       color: #1e293b;
       width: 100%;
+    }
+
+    .slider-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .slider-row span {
+      font-size: 0.85rem;
+      font-weight: 600;
+      color: #334155;
+      min-width: 38px;
+      text-align: right;
     }
 
     .range-inputs {
@@ -162,7 +176,7 @@
         </select>
       </div>
 
-      <!-- Range Controls -->
+      <!-- Pitch Range Controls -->
       <div class="control-group">
         <label>Pitch Range Limits</label>
         <div class="range-inputs">
@@ -188,7 +202,31 @@
           <label><input type="checkbox" id="r-sixteenth"> 4 Sixteenth Notes</label>
           <label><input type="checkbox" id="r-dotted-eighth" checked> Dotted 8th + 16th</label>
           <label><input type="checkbox" id="r-sixteenth-eighth"> 16th + Dotted 8th</label>
-          <label><input type="checkbox" id="r-rests" checked> Quarter Rest</label>
+        </div>
+      </div>
+
+      <!-- Rest %, Accidental %, Repeat % Controls -->
+      <div class="control-group">
+        <label for="rest-pct">Rest %</label>
+        <div class="slider-row">
+          <input type="range" id="rest-pct" min="0" max="50" value="10" oninput="document.getElementById('rest-val').textContent = this.value + '%'">
+          <span id="rest-val">10%</span>
+        </div>
+      </div>
+
+      <div class="control-group">
+        <label for="accidental-pct">Accidental %</label>
+        <div class="slider-row">
+          <input type="range" id="accidental-pct" min="0" max="50" value="0" oninput="document.getElementById('accidental-val').textContent = this.value + '%'">
+          <span id="accidental-val">0%</span>
+        </div>
+      </div>
+
+      <div class="control-group">
+        <label for="repeat-pct">Repeat %</label>
+        <div class="slider-row">
+          <input type="range" id="repeat-pct" min="0" max="50" value="15" oninput="document.getElementById('repeat-val').textContent = this.value + '%'">
+          <span id="repeat-val">15%</span>
         </div>
       </div>
 
@@ -251,6 +289,8 @@ const KEY_ACCIDENTALS = {
   'A': { 'f': '#', 'c': '#', 'g': '#' },
   'F': { 'b': 'b' }
 };
+
+const CHROMATIC_CHROMAS = ['c', 'c#', 'd', 'd#', 'e', 'f', 'f#', 'g', 'g#', 'a', 'a#', 'b'];
 
 const MIDI_MAP = {
   'g/3':55, 'a/3':57, 'b/3':59,
@@ -329,6 +369,10 @@ function generateEtude() {
   const maxSkip = parseInt(document.getElementById("skip-range").value);
   const allowSyncopation = document.getElementById("use-syncopation").checked;
 
+  const restPct = parseInt(document.getElementById("rest-pct").value, 10) / 100;
+  const accidentalPct = parseInt(document.getElementById("accidental-pct").value, 10) / 100;
+  const repeatPct = parseInt(document.getElementById("repeat-pct").value, 10) / 100;
+
   const diatonicScale = getDiatonicScale(keySig, minMidi, maxMidi);
   if (diatonicScale.length === 0) return;
 
@@ -336,29 +380,26 @@ function generateEtude() {
 
   const singleBeatPatterns = [];
   if (document.getElementById("r-quarter").checked) {
-    singleBeatPatterns.push([{ dur: 'q', beats: 1.0, isRest: false }]);
+    singleBeatPatterns.push([{ dur: 'q', beats: 1.0 }]);
   }
   if (document.getElementById("r-eighth").checked) {
-    singleBeatPatterns.push([{ dur: '8', beats: 0.5, isRest: false }, { dur: '8', beats: 0.5, isRest: false }]);
+    singleBeatPatterns.push([{ dur: '8', beats: 0.5 }, { dur: '8', beats: 0.5 }]);
   }
   if (document.getElementById("r-sixteenth").checked) {
     singleBeatPatterns.push([
-      { dur: '16', beats: 0.25, isRest: false }, { dur: '16', beats: 0.25, isRest: false },
-      { dur: '16', beats: 0.25, isRest: false }, { dur: '16', beats: 0.25, isRest: false }
+      { dur: '16', beats: 0.25 }, { dur: '16', beats: 0.25 },
+      { dur: '16', beats: 0.25 }, { dur: '16', beats: 0.25 }
     ]);
   }
   if (document.getElementById("r-dotted-eighth").checked) {
-    singleBeatPatterns.push([{ dur: '8d', beats: 0.75, isRest: false }, { dur: '16', beats: 0.25, isRest: false }]);
+    singleBeatPatterns.push([{ dur: '8d', beats: 0.75 }, { dur: '16', beats: 0.25 }]);
   }
   if (document.getElementById("r-sixteenth-eighth").checked) {
-    singleBeatPatterns.push([{ dur: '16', beats: 0.25, isRest: false }, { dur: '8d', beats: 0.75, isRest: false }]);
-  }
-  if (document.getElementById("r-rests") && document.getElementById("r-rests").checked) {
-    singleBeatPatterns.push([{ dur: 'qr', beats: 1.0, isRest: true }]);
+    singleBeatPatterns.push([{ dur: '16', beats: 0.25 }, { dur: '8d', beats: 0.75 }]);
   }
 
   if (singleBeatPatterns.length === 0) {
-    singleBeatPatterns.push([{ dur: 'q', beats: 1.0, isRest: false }]);
+    singleBeatPatterns.push([{ dur: 'q', beats: 1.0 }]);
   }
 
   const renderer = new VF.Renderer(container, VF.Renderer.Backends.SVG);
@@ -387,7 +428,7 @@ function generateEtude() {
     const measureBeams = [];
     const measureTies = [];
 
-    // Track active accidental states within the measure to carry through and place natural signs[cite: 14]
+    // Track active accidental state across the measure for automatic natural/accidental management
     const measureAccidentalsState = Object.assign({}, KEY_ACCIDENTALS[keySig] || {});
 
     for (let beat = 0; beat < beatsPerMeasure; beat++) {
@@ -435,32 +476,48 @@ function generateEtude() {
         const beatNotes = [];
 
         for (let noteDef of pattern) {
-          // Standard rest conventions[cite: 14]
-          if (noteDef.isRest) {
-            const restNote = new VF.StaveNote({ clef: "treble", keys: ["b/4"], duration: noteDef.dur });
+          // Check Rest %
+          if (Math.random() < restPct) {
+            const restNote = new VF.StaveNote({ clef: "treble", keys: ["b/4"], duration: noteDef.dur + "r" });
             measureNotes.push(restNote);
             generatedPlaybackData.push({ midi: null, duration: noteDef.beats });
             continue;
           }
 
-          let step = Math.floor(Math.random() * (maxSkip - 1)) + 1;
-          let direction = Math.random() < 0.5 ? 1 : -1;
-          currentScaleIdx = Math.max(0, Math.min(diatonicScale.length - 1, currentScaleIdx + (step * direction)));
+          // Check Repeat % vs pitch step
+          if (Math.random() >= repeatPct) {
+            let step = Math.floor(Math.random() * (maxSkip - 1)) + 1;
+            let direction = Math.random() < 0.5 ? 1 : -1;
+            currentScaleIdx = Math.max(0, Math.min(diatonicScale.length - 1, currentScaleIdx + (step * direction)));
+          }
 
-          const scaleObj = diatonicScale[currentScaleIdx];
+          let scaleObj = diatonicScale[currentScaleIdx];
+          let keyNoteStr = scaleObj.key;
+          let noteMidi = scaleObj.midi;
+          let pitchLetter = scaleObj.pitchLetter;
+          let noteAccidental = scaleObj.key.includes('#') ? '#' : (scaleObj.key.includes('b') ? 'b' : 'n');
+
+          // Check Accidental % (Inject chromatic accidental)
+          if (Math.random() < accidentalPct) {
+            const chromShift = Math.random() < 0.5 ? 1 : -1;
+            const newMidi = Math.max(minMidi, Math.min(maxMidi, noteMidi + chromShift));
+            const octave = Math.floor(newMidi / 12) - 1;
+            const chromaName = CHROMATIC_CHROMAS[newMidi % 12];
+            keyNoteStr = `${chromaName}/${octave}`;
+            noteMidi = newMidi;
+            pitchLetter = chromaName.replace('#', '').replace('b', '');
+            noteAccidental = chromaName.includes('#') ? '#' : (chromaName.includes('b') ? 'b' : 'n');
+          }
 
           const staveNote = new VF.StaveNote({
             clef: "treble",
-            keys: [scaleObj.key],
+            keys: [keyNoteStr],
             duration: noteDef.dur,
             stem_direction: 1
           });
 
-          // Accidental management across measures[cite: 14]
-          const pitchLetter = scaleObj.pitchLetter;
-          const noteAccidental = scaleObj.key.includes('#') ? '#' : (scaleObj.key.includes('b') ? 'b' : 'n');
+          // AccidentalCarry / Fix Accidental Logic
           const currentActiveAccidental = measureAccidentalsState[pitchLetter] || 'n';
-
           if (noteAccidental !== currentActiveAccidental) {
             staveNote.addModifier(new VF.Accidental(noteAccidental));
             measureAccidentalsState[pitchLetter] = noteAccidental;
@@ -473,7 +530,7 @@ function generateEtude() {
           beatNotes.push(staveNote);
           measureNotes.push(staveNote);
 
-          generatedPlaybackData.push({ midi: scaleObj.midi, duration: noteDef.beats });
+          generatedPlaybackData.push({ midi: noteMidi, duration: noteDef.beats });
         }
 
         if (beatNotes.length > 1) {
