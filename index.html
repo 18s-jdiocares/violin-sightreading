@@ -188,6 +188,7 @@
           <label><input type="checkbox" id="r-sixteenth"> 4 Sixteenth Notes</label>
           <label><input type="checkbox" id="r-dotted-eighth" checked> Dotted 8th + 16th</label>
           <label><input type="checkbox" id="r-sixteenth-eighth"> 16th + Dotted 8th</label>
+          <label><input type="checkbox" id="r-rests" checked> Quarter Rest</label>
         </div>
       </div>
 
@@ -201,12 +202,9 @@
         </select>
       </div>
 
-      <!-- Settings Section -->
       <div class="control-group">
-        <label>Settings</label>
+        <label>Syncopation</label>
         <div class="checkbox-group-vertical">
-          <label><input type="checkbox" id="fix-accidentals" checked> Fix accidentals (carry through measure)</label>
-          <label><input type="checkbox" id="standard-rests"> Have rests follow standard convention</label>
           <label><input type="checkbox" id="use-syncopation"> Allow Syncopation (Tied across beat)</label>
         </div>
       </div>
@@ -330,8 +328,6 @@ function generateEtude() {
   const numMeasures = parseInt(document.getElementById("measures").value);
   const maxSkip = parseInt(document.getElementById("skip-range").value);
   const allowSyncopation = document.getElementById("use-syncopation").checked;
-  const fixAccidentals = document.getElementById("fix-accidentals").checked;
-  const standardRests = document.getElementById("standard-rests").checked;
 
   const diatonicScale = getDiatonicScale(keySig, minMidi, maxMidi);
   if (diatonicScale.length === 0) return;
@@ -357,9 +353,7 @@ function generateEtude() {
   if (document.getElementById("r-sixteenth-eighth").checked) {
     singleBeatPatterns.push([{ dur: '16', beats: 0.25, isRest: false }, { dur: '8d', beats: 0.75, isRest: false }]);
   }
-
-  // Include standard rests option
-  if (standardRests) {
+  if (document.getElementById("r-rests") && document.getElementById("r-rests").checked) {
     singleBeatPatterns.push([{ dur: 'qr', beats: 1.0, isRest: true }]);
   }
 
@@ -393,7 +387,7 @@ function generateEtude() {
     const measureBeams = [];
     const measureTies = [];
 
-    // Track active accidental states within the measure
+    // Track active accidental states within the measure to carry through and place natural signs[cite: 14]
     const measureAccidentalsState = Object.assign({}, KEY_ACCIDENTALS[keySig] || {});
 
     for (let beat = 0; beat < beatsPerMeasure; beat++) {
@@ -441,6 +435,7 @@ function generateEtude() {
         const beatNotes = [];
 
         for (let noteDef of pattern) {
+          // Standard rest conventions[cite: 14]
           if (noteDef.isRest) {
             const restNote = new VF.StaveNote({ clef: "treble", keys: ["b/4"], duration: noteDef.dur });
             measureNotes.push(restNote);
@@ -461,22 +456,14 @@ function generateEtude() {
             stem_direction: 1
           });
 
-          // Accidentals Carrying Through Logic
-          if (fixAccidentals) {
-            const pitchLetter = scaleObj.pitchLetter;
-            const noteAccidental = scaleObj.key.includes('#') ? '#' : (scaleObj.key.includes('b') ? 'b' : 'n');
-            const currentActiveAccidental = measureAccidentalsState[pitchLetter] || 'n';
+          // Accidental management across measures[cite: 14]
+          const pitchLetter = scaleObj.pitchLetter;
+          const noteAccidental = scaleObj.key.includes('#') ? '#' : (scaleObj.key.includes('b') ? 'b' : 'n');
+          const currentActiveAccidental = measureAccidentalsState[pitchLetter] || 'n';
 
-            if (noteAccidental !== currentActiveAccidental) {
-              if (noteAccidental === 'n') {
-                staveNote.addModifier(new VF.Accidental('n'));
-              } else if (noteAccidental === '#') {
-                staveNote.addModifier(new VF.Accidental('#'));
-              } else if (noteAccidental === 'b') {
-                staveNote.addModifier(new VF.Accidental('b'));
-              }
-              measureAccidentalsState[pitchLetter] = noteAccidental;
-            }
+          if (noteAccidental !== currentActiveAccidental) {
+            staveNote.addModifier(new VF.Accidental(noteAccidental));
+            measureAccidentalsState[pitchLetter] = noteAccidental;
           }
 
           if (noteDef.dur === '8d') {
