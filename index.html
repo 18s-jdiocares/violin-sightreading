@@ -431,59 +431,44 @@ function generateEtude() {
     // Track active accidental state across the measure for automatic natural/accidental management
     const measureAccidentalsState = Object.assign({}, KEY_ACCIDENTALS[keySig] || {});
 
+    let pendingTieNote = null;
+
     for (let beat = 0; beat < beatsPerMeasure; beat++) {
-      let pattern;
-      let isSyncopatedTwoBeat = false;
+      const pattern = singleBeatPatterns[Math.floor(Math.random() * singleBeatPatterns.length)];
+      const beatNotes = [];
 
-      if (allowSyncopation && beat < beatsPerMeasure - 1 && Math.random() < 0.35) {
-        isSyncopatedTwoBeat = true;
-      }
+      // Determine if we should tie the last note of this beat to the first note of the next beat
+      const isLastBeatInMeasure = (beat === beatsPerMeasure - 1);
+      const createSyncopationTie = allowSyncopation && !isLastBeatInMeasure && (Math.random() < 0.35);
 
-      if (isSyncopatedTwoBeat) {
-        let step = Math.floor(Math.random() * (maxSkip - 1)) + 1;
-        let direction = Math.random() < 0.5 ? 1 : -1;
-        currentScaleIdx = Math.max(0, Math.min(diatonicScale.length - 1, currentScaleIdx + (step * direction)));
-        let note1 = diatonicScale[currentScaleIdx];
+      for (let i = 0; i < pattern.length; i++) {
+        const noteDef = pattern[i];
+        const isFirstInBeat = (i === 0);
+        const isLastInBeat = (i === pattern.length - 1);
 
-        step = Math.floor(Math.random() * (maxSkip - 1)) + 1;
-        direction = Math.random() < 0.5 ? 1 : -1;
-        currentScaleIdx = Math.max(0, Math.min(diatonicScale.length - 1, currentScaleIdx + (step * direction)));
-        let note2 = diatonicScale[currentScaleIdx];
+        // Handle Rest %
+        if (Math.random() < restPct) {
+          const restNote = new VF.StaveNote({ clef: "treble", keys: ["b/4"], duration: noteDef.dur + "r" });
+          measureNotes.push(restNote);
+          generatedPlaybackData.push({ midi: null, duration: noteDef.beats });
+          pendingTieNote = null; // Rests break ties
+          continue;
+        }
 
-        const sn1 = new VF.StaveNote({ clef: "treble", keys: [note1.key], duration: "8", stem_direction: 1 });
-        const sn2 = new VF.StaveNote({ clef: "treble", keys: [note2.key], duration: "8", stem_direction: 1 });
-        const sn3 = new VF.StaveNote({ clef: "treble", keys: [note2.key], duration: "8", stem_direction: 1 });
-        const sn4 = new VF.StaveNote({ clef: "treble", keys: [note1.key], duration: "8", stem_direction: 1 });
+        let scaleObj;
+        let keyNoteStr;
+        let noteMidi;
+        let pitchLetter;
+        let noteAccidental;
 
-        measureNotes.push(sn1, sn2, sn3, sn4);
-        measureBeams.push(new VF.Beam([sn1, sn2]));
-        measureBeams.push(new VF.Beam([sn3, sn4]));
-
-        measureTies.push(new VF.StaveTie({
-          first_note: sn2,
-          last_note: sn3,
-          first_indices: [0],
-          last_indices: [0]
-        }));
-
-        generatedPlaybackData.push({ midi: note1.midi, duration: 0.5 });
-        generatedPlaybackData.push({ midi: note2.midi, duration: 1.0 });
-        generatedPlaybackData.push({ midi: note1.midi, duration: 0.5 });
-
-        beat++; 
-      } else {
-        pattern = singleBeatPatterns[Math.floor(Math.random() * singleBeatPatterns.length)];
-        const beatNotes = [];
-
-        for (let noteDef of pattern) {
-          // Check Rest %
-          if (Math.random() < restPct) {
-            const restNote = new VF.StaveNote({ clef: "treble", keys: ["b/4"], duration: noteDef.dur + "r" });
-            measureNotes.push(restNote);
-            generatedPlaybackData.push({ midi: null, duration: noteDef.beats });
-            continue;
-          }
-
+        // If this note is tied from the previous beat's last note, retain pitch
+        if (isFirstInBeat && pendingTieNote) {
+          scaleObj = pendingTieNote.scaleObj;
+          keyNoteStr = pendingTieNote.keyNoteStr;
+          noteMidi = pendingTieNote.noteMidi;
+          pitchLetter = pendingTieNote.pitchLetter;
+          noteAccidental = pendingTieNote.noteAccidental;
+        } else {
           // Check Repeat % vs pitch step
           if (Math.random() >= repeatPct) {
             let step = Math.floor(Math.random() * (maxSkip - 1)) + 1;
@@ -491,11 +476,11 @@ function generateEtude() {
             currentScaleIdx = Math.max(0, Math.min(diatonicScale.length - 1, currentScaleIdx + (step * direction)));
           }
 
-          let scaleObj = diatonicScale[currentScaleIdx];
-          let keyNoteStr = scaleObj.key;
-          let noteMidi = scaleObj.midi;
-          let pitchLetter = scaleObj.pitchLetter;
-          let noteAccidental = scaleObj.key.includes('#') ? '#' : (scaleObj.key.includes('b') ? 'b' : 'n');
+          scaleObj = diatonicScale[currentScaleIdx];
+          keyNoteStr = scaleObj.key;
+          noteMidi = scaleObj.midi;
+          pitchLetter = scaleObj.pitchLetter;
+          noteAccidental = scaleObj.key.includes('#') ? '#' : (scaleObj.key.includes('b') ? 'b' : 'n');
 
           // Check Accidental % (Inject chromatic accidental)
           if (Math.random() < accidentalPct) {
@@ -508,34 +493,64 @@ function generateEtude() {
             pitchLetter = chromaName.replace('#', '').replace('b', '');
             noteAccidental = chromaName.includes('#') ? '#' : (chromaName.includes('b') ? 'b' : 'n');
           }
+        }
 
-          const staveNote = new VF.StaveNote({
-            clef: "treble",
-            keys: [keyNoteStr],
-            duration: noteDef.dur,
-            stem_direction: 1
-          });
+        const staveNote = new VF.StaveNote({
+          clef: "treble",
+          keys: [keyNoteStr],
+          duration: noteDef.dur,
+          stem_direction: 1
+        });
 
-          // AccidentalCarry / Fix Accidental Logic
-          const currentActiveAccidental = measureAccidentalsState[pitchLetter] || 'n';
-          if (noteAccidental !== currentActiveAccidental) {
-            staveNote.addModifier(new VF.Accidental(noteAccidental));
-            measureAccidentalsState[pitchLetter] = noteAccidental;
+        // AccidentalCarry / Fix Accidental Logic
+        const currentActiveAccidental = measureAccidentalsState[pitchLetter] || 'n';
+        if (noteAccidental !== currentActiveAccidental) {
+          staveNote.addModifier(new VF.Accidental(noteAccidental));
+          measureAccidentalsState[pitchLetter] = noteAccidental;
+        }
+
+        if (noteDef.dur === '8d') {
+          staveNote.addModifier(new VF.Dot());
+        }
+
+        beatNotes.push(staveNote);
+        measureNotes.push(staveNote);
+
+        // Attach tie if tied from previous beat
+        if (isFirstInBeat && pendingTieNote) {
+          measureTies.push(new VF.StaveTie({
+            first_note: pendingTieNote.staveNote,
+            last_note: staveNote,
+            first_indices: [0],
+            last_indices: [0]
+          }));
+
+          // Extend duration of previous playback note
+          if (generatedPlaybackData.length > 0 && generatedPlaybackData[generatedPlaybackData.length - 1].midi !== null) {
+            generatedPlaybackData[generatedPlaybackData.length - 1].duration += noteDef.beats;
+          } else {
+            generatedPlaybackData.push({ midi: noteMidi, duration: noteDef.beats });
           }
-
-          if (noteDef.dur === '8d') {
-            staveNote.addModifier(new VF.Dot());
-          }
-
-          beatNotes.push(staveNote);
-          measureNotes.push(staveNote);
-
+          pendingTieNote = null;
+        } else {
           generatedPlaybackData.push({ midi: noteMidi, duration: noteDef.beats });
         }
 
-        if (beatNotes.length > 1) {
-          measureBeams.push(new VF.Beam(beatNotes));
+        // Set up pending tie if this is the last note in beat and syncopation is triggered
+        if (isLastInBeat && createSyncopationTie) {
+          pendingTieNote = {
+            staveNote: staveNote,
+            scaleObj: scaleObj,
+            keyNoteStr: keyNoteStr,
+            noteMidi: noteMidi,
+            pitchLetter: pitchLetter,
+            noteAccidental: noteAccidental
+          };
         }
+      }
+
+      if (beatNotes.length > 1) {
+        measureBeams.push(new VF.Beam(beatNotes));
       }
     }
 
